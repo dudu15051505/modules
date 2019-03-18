@@ -77,21 +77,36 @@ Function Update-CloudFlareDynamicDns
         [string]$Record,
 		
 		[Parameter(mandatory = $false)]
-        [switch]$UseDns
+        [switch]$UseDns,
+
+		[Parameter(mandatory = $false)]
+		[ValidateSet("4","6")]
+		[string]$IPv = "4"
     )
+
 	if ($record) {
 		$hostname = "$record.$zone"
 	} else {
 		$hostname = "$zone"
 	}
+
 	$headers = @{
 		'X-Auth-Key' = $token
 		'X-Auth-Email' = $email
 	}
 
 	Write-Output "Resolving external IP"
-	try { $ipaddr = Invoke-RestMethod http://ipinfo.io/json | Select-Object -ExpandProperty ip }
-	catch { throw "Can't get external IP Address. Quitting." }
+	try { 
+		if($IPv -eq "4") {
+			$ipaddr = Invoke-RestMethod https://v4.ident.me/.json | Select-Object -ExpandProperty address
+		}
+		else {
+			$ipaddr = Invoke-RestMethod https://v6.ident.me/.json | Select-Object -ExpandProperty address
+		}
+	}
+	catch { 
+		throw "Can't get external IP Address. Quitting." 
+	}
 
 	if ($ipaddr -eq $null) { throw "Can't get external IP Address. Quitting." }
 	Write-Output "External IP is $ipaddr"
@@ -157,11 +172,21 @@ Function Update-CloudFlareDynamicDns
 		Write-Output "Updated IP to $newip"
 	} else {
 		Write-Output "Adding $hostname to CloudFlare"
-		$newrecord = @{
+		if ($IPv -eq "4") {
+			$newrecord = @{
 			"type" = "A"
 			"name" =  $hostname
 			"content" = $ipaddr
+			}
 		}
+		esle  {
+				$newrecord = @{
+				"type" = "AAAA"
+				"name" =  $hostname
+				"content" = $ipaddr
+			}
+		}
+		
 		
 		$body = ConvertTo-Json -InputObject $newrecord
 		$newrecordurl = "$baseurl/$zoneid/dns_records"
